@@ -1,46 +1,110 @@
 const std = @import("std");
-const Allocator = std.mem.Allocator;
-const List = std.ArrayList;
-const Map = std.AutoHashMap;
-const StrMap = std.StringHashMap;
-const BitSet = std.DynamicBitSet;
-
-const util = @import("util.zig");
-const gpa = util.gpa;
 
 const data = @embedFile("data/day11.txt");
+const data_test = @embedFile("data/day11.test.txt");
 
 pub fn main() !void {
-    
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    const p1 = try partOne(allocator, data);
+    const p2 = try partTwo(allocator, data);
+    std.debug.print("part 1: {d}\npart 2: {d}\n", .{ p1, p2 });
 }
 
-// Useful stdlib functions
-const tokenizeAny = std.mem.tokenizeAny;
-const tokenizeSeq = std.mem.tokenizeSequence;
-const tokenizeSca = std.mem.tokenizeScalar;
-const splitAny = std.mem.splitAny;
-const splitSeq = std.mem.splitSequence;
-const splitSca = std.mem.splitScalar;
-const indexOf = std.mem.indexOfScalar;
-const indexOfAny = std.mem.indexOfAny;
-const indexOfStr = std.mem.indexOfPosLinear;
-const lastIndexOf = std.mem.lastIndexOfScalar;
-const lastIndexOfAny = std.mem.lastIndexOfAny;
-const lastIndexOfStr = std.mem.lastIndexOfLinear;
-const trim = std.mem.trim;
-const sliceMin = std.mem.min;
-const sliceMax = std.mem.max;
+fn partOne(allocator: std.mem.Allocator, input: []const u8) !u32 {
+    var octopuses = parseInput(input);
 
-const parseInt = std.fmt.parseInt;
-const parseFloat = std.fmt.parseFloat;
+    var total_flashes: u32 = 0;
+    const total_steps = 100;
+    for (0..total_steps) |_| {
+        const flashes, _ = try step(allocator, &octopuses);
+        total_flashes += flashes;
+    }
+    return total_flashes;
+}
 
-const print = std.debug.print;
-const assert = std.debug.assert;
+fn partTwo(allocator: std.mem.Allocator, input: []const u8) !u32 {
+    var octopuses = parseInput(input);
 
-const sort = std.sort.block;
-const asc = std.sort.asc;
-const desc = std.sort.desc;
+    var current_steps: u32 = 0;
+    var all_flash = false;
+    while (!all_flash) : (current_steps += 1) {
+        _, all_flash = try step(allocator, &octopuses);
+    }
+    return current_steps;
+}
 
-// Generated from template/template.zig.
-// Run `zig build generate` to update.
-// Only unmodified days will be updated.
+fn step(allocator: std.mem.Allocator, octopuses: *[12][12]i8) !struct { u32, bool } {
+    var flashes_seen = std.AutoHashMap([2]i8, void).init(allocator);
+    defer flashes_seen.deinit();
+
+    var queue: std.fifo.LinearFifo([2]i8, .Dynamic) = std.fifo.LinearFifo([2]i8, .Dynamic).init(allocator);
+    defer queue.deinit();
+
+    for (1..11) |y| {
+        for (1..11) |x| {
+            octopuses[y][x] += 1;
+            if (octopuses[y][x] > 9) {
+                const coord: [2]i8 = .{ @intCast(x), @intCast(y) };
+                try queue.writeItem(coord);
+                try flashes_seen.put(coord, {});
+            }
+        }
+    }
+
+    while (queue.readItem()) |coord| {
+        octopuses[@intCast(coord[1])][@intCast(coord[0])] = 0;
+        for ([3]i8{ -1, 0, 1 }) |dy| {
+            for ([3]i8{ -1, 0, 1 }) |dx| {
+                const adj_coord: [2]i8 = .{ dx + coord[0], dy + coord[1] };
+                const x: usize = @intCast(adj_coord[0]);
+                const y: usize = @intCast(adj_coord[1]);
+                if (octopuses[y][x] < 0 or (dy == 0 and dx == 0) or flashes_seen.contains(adj_coord))
+                    continue;
+
+                octopuses[y][x] += 1;
+                if (octopuses[y][x] > 9) {
+                    try queue.writeItem(adj_coord);
+                    try flashes_seen.put(adj_coord, {});
+                }
+            }
+        }
+    }
+
+    const flashes = flashes_seen.count();
+    return .{ flashes, flashes == 100 };
+}
+
+fn parseInput(input: []const u8) [12][12]i8 {
+    var octopuses: [12][12]i8 = undefined;
+    for (0..12) |i| {
+        octopuses[i][0] = -1;
+        octopuses[i][11] = -1;
+        octopuses[0][i] = -1;
+        octopuses[11][i] = -1;
+    }
+
+    var i: usize = 0;
+    for (input) |c| {
+        if (c == '\n')
+            continue;
+
+        octopuses[@divTrunc(i, 10) + 1][@mod(i, 10) + 1] = @intCast(c - '0');
+        i += 1;
+    }
+    return octopuses;
+}
+
+test "p1" {
+    const allocator = std.testing.allocator;
+    const ans = try partOne(allocator, data_test);
+    try std.testing.expectEqual(1656, ans);
+}
+
+test "p2" {
+    const allocator = std.testing.allocator;
+    const ans = try partTwo(allocator, data_test);
+    try std.testing.expectEqual(195, ans);
+}

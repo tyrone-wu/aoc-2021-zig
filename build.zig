@@ -5,7 +5,7 @@ const CompileStep = std.Build.Step.Compile;
 /// set this to true to link libc
 const should_link_libc = false;
 
-const required_zig_version = std.SemanticVersion.parse("0.13.0") catch unreachable;
+const required_zig_version = std.SemanticVersion.parse("0.14.0") catch unreachable;
 
 fn linkObject(b: *Build, obj: *CompileStep) void {
     if (should_link_libc) obj.linkLibC();
@@ -87,18 +87,6 @@ pub fn build(b: *Build) void {
         const run_step = b.step(dayString, run_desc);
         run_step.dependOn(&run_cmd.step);
         run_all.dependOn(&run_cmd.step);
-    }
-
-    // Set up tests for util.zig
-    {
-        const test_util = b.step("test_util", "Run tests in util.zig");
-        const test_cmd = b.addTest(.{
-            .root_source_file = b.path("src/util.zig"),
-            .target = target,
-            .optimize = mode,
-        });
-        linkObject(b, test_cmd);
-        test_util.dependOn(&test_cmd.step);
     }
 
     // Set up all tests contained in test_all.zig
